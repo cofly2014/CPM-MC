@@ -1,4 +1,3 @@
-_BASE: ../OTAM_base.yaml
 TASK_TYPE: few_shot_action
 RANDOM_SEED: 18
 TRAIN:

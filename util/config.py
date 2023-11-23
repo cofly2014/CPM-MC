@@ -54,7 +54,7 @@ class Config(object):
             #default = "/home/guofei/Projects/CLIP-CPM^2C/configs/CLIPFSAR/kinetics100/CLIPFSAR_K100_1shot_v1.yaml"
             #default = "/home/guofei/Projects/CLIP-CPM^2C/configs/CLIPFSAR/ucf101/CLIPFSAR_UCF101_1shot_v1.yaml"
             #default="/home/guofei/Projects/CLIP-CPM^2C/configs/CLIPFSAR/ssv2_full/CLIPFSAR_SSv2_Full_1shot_v1.yaml"
-            default = "/home/guofei/Projects/CLIP-CPM^2C/configs/CLIPFSAR/ssv2_small/CLIPFSAR_SSv2_Small_1shot_v1.yaml"
+            default = "/home/guofei/Projects/CPM^2C/configs/CLIPFSAR/ssv2_small/CLIPFSAR_SSv2_Small_1shot_v1.yaml"
             #default = "/home/guofei/Projects/CLIP-CPM^2C/configs/CLIPFSAR/hmdb51/CLIPFSAR_HMDB51_1shot_v1.yaml"
         )
         parser.add_argument(

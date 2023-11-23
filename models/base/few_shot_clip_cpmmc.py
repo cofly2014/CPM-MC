@@ -418,7 +418,7 @@ class CLIP_CPMMC_FSAR(nn.Module):
             self.target_context_support = self.text_features_train[target_real_class.long()].unsqueeze(1)
         else:
             self.context_support = self.text_features_test[support_real_class.long()].unsqueeze(1)  # .repeat(1, self.args.DATA.NUM_INPUT_FRAMES, 1) # .repeat(support_bs+target_bs, 1, 1)
-            self.target_context_support = self.text_features_train[target_real_class.long()].unsqueeze(1)
+            self.target_context_support = self.text_features_test[target_real_class.long()].unsqueeze(1)
 
         support_features, target_features, text_features = self.get_feats(support_images, target_images, support_real_class)
         support_features_motion, target_features_motion = self.get_motion_feats(support_features, target_features)
@@ -492,7 +492,21 @@ class CLIP_CPMMC_FSAR(nn.Module):
         ################################motion和normal的局部帧对齐距离，以及其总体距离 end#########################################
 
         return class_dists_g, class_dists_l, consist_distance
-
+    def otam_distance(self, support_features, target_features):
+        n_queries = target_features.shape[0]
+        n_support = support_features.shape[0]
+        support_features = rearrange(support_features, 'b s d -> (b s) d')  # 5 8 1024-->40  1024
+        target_features = rearrange(target_features, 'b s d -> (b s) d')
+        frame_sim = cos_sim(target_features, support_features)  # 类别数量*每个类的样本数量， 类别数量
+        frame_dists = 1 - frame_sim
+        # dists维度为 query样本数量， support类别数量，帧数，帧数
+        dists = rearrange(frame_dists, '(tb ts) (sb ss) -> tb sb ts ss', tb=n_queries, sb=n_support)  # [25, 25, 8, 8]
+        # calculate query -> support and support -> query  双向匹配还是单向匹配
+        if hasattr(self.args.TRAIN, "SINGLE_DIRECT") and self.args.TRAIN.SINGLE_DIRECT:
+            cum_dists = OTAM_cum_dist_v2(dists)
+        else:
+            cum_dists = OTAM_cum_dist_v2(dists) + OTAM_cum_dist_v2(rearrange(dists, 'tb sb ts ss -> tb sb ss ts'))
+        return cum_dists
     def global_distance(self, support_features_g, support_labels, target_features):
         unique_labels = torch.unique(support_labels)
         # query to support
@@ -509,36 +523,29 @@ class CLIP_CPMMC_FSAR(nn.Module):
         target_bs = target_features.shape[0]
         support_bs = support_features.shape[0]
 
+        #一致性真实target token, 只有训练的时候用,元测试阶段其实可以没有这段代码，放在这里为了debug的时候，可以输出真实对比
         #沿着frame方向扩真，然后叠加到帧特征上
-
         s_number = support_features.shape[1]
         target_context_support_repeat = self.target_context_support.repeat(1, s_number, 1)
         target_features = target_features + 0.1 * target_context_support_repeat
-
-
         target_features_contra = torch.cat([self.target_context_support, target_features], dim=1)
         target_features_contra = self.context2(target_features_contra, target_features_contra, target_features_contra)
+
+        #一致性的fake support token
         support_token = token.expand(support_bs, -1, -1)
-
-
         #沿着frame方向扩真，然后叠加到帧特征上
         s_number = support_features.shape[1]
         support_token_repeat = support_token.repeat(1, s_number, 1)
         support_features = support_features + 0.1 * support_token_repeat
-
-
         support_features_contra = torch.cat([support_token, support_features], dim=1)
         support_features_contra = self.context2(support_features_contra, support_features_contra, support_features_contra)
+
+        #对比比较的fake target
         target_token= token.expand(target_bs, -1, -1)
-
         #沿着frame方向扩真，然后叠加到帧特征上
-
-
         s_number = support_features.shape[1]
         target_token_repeat = target_token.repeat(1, s_number, 1)
         target_features = target_features + 0.1 * target_token_repeat
-
-
         target_features = torch.cat([target_token, target_features], dim=1)
         target_features = self.context2(target_features, target_features, target_features)
 
@@ -556,16 +563,14 @@ class CLIP_CPMMC_FSAR(nn.Module):
             context_support = torch.stack(context_support)
         #沿着frame方向扩真，然后叠加到帧特征上 增加context叠加
 
-
+        #对比比较的real support
         s_number = support_features.shape[1]
         context_support_repeat = context_support.repeat(1, s_number, 1)
         support_features = support_features + 0.1 * context_support_repeat
-
-
         #support实际第一位用的是实际文本
         support_features = torch.cat([context_support,support_features], dim=1)  # 对应于R^txC 并上R^C--> R^(t+1)xC, 我们将文本特征沿着时间维度堆叠到相应的视频 Prototype modulation
-
         support_features = self.context2(support_features, support_features, support_features) # 对Prototype modulation之后的support进行temporal transformer操作
+
         if hasattr(self.args.TRAIN, "MERGE_BEFORE") and self.args.TRAIN.MERGE_BEFORE:
             pass
         else:
